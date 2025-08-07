@@ -13,10 +13,10 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Multiplayer Snake")
 
 # Colors
-WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
+GREEN = (0, 255, 0)
 
 # Snake properties
 SNAKE_SIZE = 20
@@ -26,36 +26,46 @@ FPS = 10
 SERVER_IP = '127.0.0.1'
 SERVER_PORT = 5555
 
-# Create a socket and connect to the server
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((SERVER_IP, SERVER_PORT))
 
-# Shared data structure for game state
-all_snake_positions = {}
+# Shared data for game state
+all_snake_bodies = {}
+food_pos = (0, 0)
 player_id = ""
-my_snake_pos = (5 * SNAKE_SIZE, 5 * SNAKE_SIZE)
 
 def network_handler():
-    global all_snake_positions
+    global all_snake_bodies, food_pos
     while True:
         try:
             data = client_socket.recv(1024).decode('utf-8')
             if not data:
                 break
             
-            positions = data.split('|')
-            all_snake_positions = {}
-            for i, pos_str in enumerate(positions):
-                if pos_str:
-                    x, y = map(int, pos_str.strip('()').split(','))
-                    all_snake_positions[f'player_{i+1}'] = (x, y)
-                    
-        except:
+            # Parse food and snake data
+            parts = data.split('|')
+            food_pos_str = parts[0].strip('()')
+            food_pos = tuple(map(int, food_pos_str.split(',')))
+            
+            snakes_data = parts[1:]
+            
+            all_snake_bodies = {}
+            for i, snake_str in enumerate(snakes_data):
+                if snake_str:
+                    body_segments = snake_str.split('),(')
+                    body_list = []
+                    for segment in body_segments:
+                        segment = segment.strip('()')
+                        x, y = map(int, segment.split(','))
+                        body_list.append((x, y))
+                    all_snake_bodies[f'player_{i+1}'] = body_list
+            
+        except Exception as e:
+            print(f"Error parsing data: {e}")
             break
             
     client_socket.close()
 
-# Start the network thread
 network_thread = threading.Thread(target=network_handler)
 network_thread.daemon = True
 network_thread.start()
@@ -63,7 +73,7 @@ network_thread.start()
 # Game loop
 running = True
 clock = pygame.time.Clock()
-dx, dy = SNAKE_SIZE, 0 # Initial movement direction (Right)
+dx, dy = SNAKE_SIZE, 0
 
 while running:
     clock.tick(FPS)
@@ -81,21 +91,23 @@ while running:
             elif event.key == pygame.K_DOWN and dy == 0:
                 dx, dy = 0, SNAKE_SIZE
 
-    # Update my snake position
-    my_snake_pos = (my_snake_pos[0] + dx, my_snake_pos[1] + dy)
-    
-    # Send my snake position to the server
+    # Send only direction to the server
     try:
-        client_socket.send(str(my_snake_pos).encode('utf-8'))
+        client_socket.send(str((dx, dy)).encode('utf-8'))
     except:
         running = False
     
     # Drawing
     screen.fill(BLACK)
-    
-    for player, pos in all_snake_positions.items():
-        color = RED if player_id == "" else BLUE
-        pygame.draw.rect(screen, color, (pos[0], pos[1], SNAKE_SIZE, SNAKE_SIZE))
+
+    # Draw food
+    pygame.draw.rect(screen, GREEN, (food_pos[0], food_pos[1], SNAKE_SIZE, SNAKE_SIZE))
+
+    # Draw all snakes
+    for player, body in all_snake_bodies.items():
+        color = RED if player == "player_1" else BLUE
+        for segment in body:
+            pygame.draw.rect(screen, color, (segment[0], segment[1], SNAKE_SIZE, SNAKE_SIZE))
     
     pygame.display.flip()
 
