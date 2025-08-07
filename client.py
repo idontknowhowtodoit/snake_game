@@ -20,6 +20,7 @@ BLUE = (0, 0, 255)
 
 # Snake properties
 SNAKE_SIZE = 20
+FPS = 10
 
 # Server configuration
 SERVER_IP = '127.0.0.1'
@@ -31,17 +32,17 @@ client_socket.connect((SERVER_IP, SERVER_PORT))
 
 # Shared data structure for game state
 all_snake_positions = {}
+player_id = ""
+my_snake_pos = (5 * SNAKE_SIZE, 5 * SNAKE_SIZE)
 
 def network_handler():
     global all_snake_positions
     while True:
         try:
-            # Receive all players' data from the server
             data = client_socket.recv(1024).decode('utf-8')
             if not data:
                 break
             
-            # Parse the received data (e.g., "pos1|pos2")
             positions = data.split('|')
             all_snake_positions = {}
             for i, pos_str in enumerate(positions):
@@ -61,29 +62,39 @@ network_thread.start()
 
 # Game loop
 running = True
-snake_pos = (5 * SNAKE_SIZE, 5 * SNAKE_SIZE)
+clock = pygame.time.Clock()
+dx, dy = SNAKE_SIZE, 0 # Initial movement direction (Right)
 
 while running:
+    clock.tick(FPS)
+    
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-            
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_LEFT and dx == 0:
+                dx, dy = -SNAKE_SIZE, 0
+            elif event.key == pygame.K_RIGHT and dx == 0:
+                dx, dy = SNAKE_SIZE, 0
+            elif event.key == pygame.K_UP and dy == 0:
+                dx, dy = 0, -SNAKE_SIZE
+            elif event.key == pygame.K_DOWN and dy == 0:
+                dx, dy = 0, SNAKE_SIZE
+
+    # Update my snake position
+    my_snake_pos = (my_snake_pos[0] + dx, my_snake_pos[1] + dy)
+    
     # Send my snake position to the server
     try:
-        client_socket.send(str(snake_pos).encode('utf-8'))
+        client_socket.send(str(my_snake_pos).encode('utf-8'))
     except:
         running = False
-        
-    # Simulate snake movement for the next turn
-    snake_pos = (snake_pos[0] + SNAKE_SIZE, snake_pos[1])
-    time.sleep(0.5)
-
+    
     # Drawing
     screen.fill(BLACK)
     
-    # Draw all snakes from the shared data
     for player, pos in all_snake_positions.items():
-        color = RED if player == 'player_1' else BLUE
+        color = RED if player_id == "" else BLUE
         pygame.draw.rect(screen, color, (pos[0], pos[1], SNAKE_SIZE, SNAKE_SIZE))
     
     pygame.display.flip()
