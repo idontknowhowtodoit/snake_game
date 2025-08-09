@@ -25,21 +25,27 @@ FPS = 3
 
 # Fonts
 font_style = pygame.font.SysFont(None, 30)
+large_font = pygame.font.SysFont(None, 50)
 
 # Server configuration
 SERVER_IP = '127.0.0.1'
 SERVER_PORT = 5555
 
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client_socket.connect((SERVER_IP, SERVER_PORT))
+try:
+    client_socket.connect((SERVER_IP, SERVER_PORT))
+    print(f"서버에 성공적으로 접속했습니다.")
+except socket.error as e:
+    print(f"서버 연결 오류: {e}")
+    sys.exit()
 
 # Shared data for game state
 all_snake_bodies = {}
 food_pos = (0, 0)
 my_id = ""
-scores = {}
 game_over = False
 running = True
+game_started = False
 
 def network_handler():
     global all_snake_bodies, food_pos, my_id, scores, game_over, running
@@ -92,16 +98,16 @@ while running:
         if event.type == pygame.QUIT:
             running = False
         if event.type == pygame.KEYDOWN:
-            if game_over:
-                if event.key == pygame.K_SPACE:
-                    # Send restart signal to server
-                    try:
-                        client_socket.send("RESTART".encode('utf-8'))
-                        game_over = False
-                        dx, dy = SNAKE_SIZE, 0
-                    except:
-                        running = False
-            else:
+            if not game_started and event.key == pygame.K_SPACE:
+                game_started = True
+            elif game_over and event.key == pygame.K_SPACE:
+                try:
+                    client_socket.send("RESTART".encode('utf-8'))
+                    game_over = False
+                    dx, dy = SNAKE_SIZE, 0
+                except:
+                    running = False
+            elif not game_over and game_started:
                 if event.key == pygame.K_LEFT and dx == 0:
                     dx, dy = -SNAKE_SIZE, 0
                 elif event.key == pygame.K_RIGHT and dx == 0:
@@ -111,7 +117,7 @@ while running:
                 elif event.key == pygame.K_DOWN and dy == 0:
                     dx, dy = 0, SNAKE_SIZE
 
-    if not game_over:
+    if game_started and not game_over:
         try:
             client_socket.send(str((dx, dy)).encode('utf-8'))
         except:
@@ -120,7 +126,13 @@ while running:
     # Drawing
     screen.fill(BLACK)
 
-    if not game_over:
+    if not game_started:
+        message_surface = large_font.render("Press SPACE to Start", True, WHITE)
+        screen.blit(message_surface, [SCREEN_WIDTH/2 - 170, SCREEN_HEIGHT/2 - 30])
+    elif game_over:
+        message_surface = font_style.render("Game Over! Press SPACE to Restart", True, WHITE)
+        screen.blit(message_surface, [SCREEN_WIDTH/2 - 180, SCREEN_HEIGHT/2 - 20])
+    else:
         # Draw food
         pygame.draw.rect(screen, GREEN, (food_pos[0], food_pos[1], SNAKE_SIZE, SNAKE_SIZE))
 
@@ -129,9 +141,6 @@ while running:
             color = RED if player == "player_1" else BLUE
             for segment in body:
                 pygame.draw.rect(screen, color, (segment[0], segment[1], SNAKE_SIZE, SNAKE_SIZE))
-    else:
-        message_surface = font_style.render("Game Over! Press SPACE to Restart", True, WHITE)
-        screen.blit(message_surface, [SCREEN_WIDTH/2 - 180, SCREEN_HEIGHT/2 - 20])
     
     pygame.display.flip()
 
